@@ -1,2 +1,7 @@
 __pycache__
+*.pyc
 .mypy_cache
+addon_packages_dev/
+vendor/
+token.json
+credentials.json

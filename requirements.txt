@@ -1,0 +1,4 @@
+google-api-python-client==2.175.0 # https://pypi.org/project/google-api-python-client/
+google-api-python-client-stubs==1.29.0 # https://pypi.org/project/google-api-python-client-stubs/
+google-auth-httplib2==0.2.0 # https://pypi.org/project/google-auth-httplib2/
+google-auth-oauthlib==1.2.2 # https://pypi.org/project/google-auth-oauthlib/
