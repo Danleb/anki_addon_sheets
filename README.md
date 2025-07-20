@@ -1,6 +1,6 @@
 # Anki addon for importing "Saved Translations" Google sheet
 
-Anki addon for importing cards from "Saved Translations" table on Google Sheets which is export of the Google Translate "Saved" list.
+Anki addon for importing cards from "Saved Translations" table on Google Sheets which contains exported words from Google Translate "Saved" list.
 
 ## Installation
 
