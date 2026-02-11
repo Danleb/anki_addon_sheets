@@ -5,3 +5,5 @@ addon_packages_dev/
 vendor/
 token.json
 credentials.json
+user_files/
+goosheesy.ankiaddon

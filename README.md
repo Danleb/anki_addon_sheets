@@ -14,23 +14,24 @@ TODO
 
 Before using the add-on, you have to configure the `credentials.json` file so that the add-on can access sheets in your Google Sheets account, and `import_config.json` file which defines mapping between Google Sheets and Anki decks.
 
-Create `credentials.json` in [console.cloud.google.com](console.cloud.google.com).
+The most complex step is to create the `credentials.json` file which will allow the add-on to access the data on Google Sheets.
+This file is created in [console.cloud.google.com](console.cloud.google.com).
 
-Create `import_config.json` file which maps your Google Sheets to Anki decks:
+Create `import_config.json` file which maps your Google Sheets to Anki decks, for example:
 
 ```json
 {
-   "spreadsheets":[
+   "synchronization_map":[
       {
-         "name":"My Japanese Vocabulary spreadsheet",
+         "spreadsheet_name":"My Japanese Vocabulary spreadsheet",
          "sheets":[
             {
-               "name":"Japanese Google Sheet",
-               "deck":"Japanese Anki deck"
+               "sheet_name":"Japanese Google Sheet",
+               "deck_name":"Japanese Anki deck"
             },
             {
-               "name":"Additional sheet",
-               "deck":"Additional deck"
+               "sheet_name":"My second sheet",
+               "deck_name":"My second deck"
             }
          ]
       }
@@ -38,12 +39,19 @@ Create `import_config.json` file which maps your Google Sheets to Anki decks:
 }
 ```
 
+Each sheet in the spreadsheet is one-way synchronized into the Anki deck.
+
 Use add-on in Anki:
 
 * Launch Anki.
-* Press `Tools`->`Google Sheets import settings`.
-* Select the `credentials.json` file.
-* Press `Tools`->`Import from Google Sheets`.
+* Press `Tools`->`Settings for Google Sheets import`.
+   * Select the `credentials.json` file.
+   * After the setup, the settings will look like following:
+
+      ![Alt text](./docs/settings_window.png)
+* Press `Tools`->`Import from Google Sheets`. If everything is configured correctly during previous steps, the window will look like following:
+
+   ![Alt text](./docs/import_window.png)
 
 ## Development
 
@@ -55,7 +63,7 @@ To prepare the project for development:
 * In order for Anki to download the add-on from the source code of repository, create a symlink:
     * On Windows:
         ```powershell
-        New-Item -Path C:\Users\MyUserName\AppData\Roaming\Anki2\addons21\gtranslate -ItemType SymbolicLink -Value C:\Users\MyUserName\source\repos\anki_addon_sheets
+        New-Item -Path C:\Users\MyUserName\AppData\Roaming\Anki2\addons21\goosheesy -ItemType SymbolicLink -Value C:\Users\MyUserName\source\repos\anki_addon_sheets
         ```
     * On Linux:
         ```bash
@@ -67,7 +75,7 @@ pip install -r requirements.txt -t ./vendor
 ```
 * Install development packages:
 ```shell
-pip install -r requirements_dev.txt -t ./addon_packages_dev
+python -m pip install -r requirements_dev.txt -t ./addon_packages_dev
 ```
 
 ### Debugging
@@ -78,7 +86,11 @@ To debug, launch Anki first. It will freeze and won't launch until you presss F5
 
 ## Deployment
 
-TODO
+* Ensure dependency modules are installed.
+* Increase version number.
+* Create addon package archive by running the `package_addon` script.
+* Upload to https://ankiweb.net/shared/addons.
+* Upload to releases page on GitHub.
 
 ## Useful links
 
@@ -90,7 +102,7 @@ TODO
 
 ## Notes
 
-* If your code throws an uncaught exception, it will be caught by Anki’s standard exception handler, and an error will be presented to the user (https://addon-docs.ankiweb.net/debugging.html).
+* Import of several sheets into the same deck is not supported at the moment.
 
 ## License
 

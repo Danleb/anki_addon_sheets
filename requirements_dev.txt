@@ -1,2 +1,4 @@
-mypy==1.16.1 # https://pypi.org/project/mypy/
-debugpy==1.8.19 # https://pypi.org/project/debugpy/
+debugpy
+mypy
+# aqt
+# pyqt6

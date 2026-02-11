@@ -15,36 +15,37 @@ import sys
 import os.path
 import os
 
-# disable warning about debugging frozen modules
-os.environ["PYDEVD_DISABLE_FILE_VALIDATION"] = "1"
-
-# load package for debugging
-here = os.path.dirname(__file__)
-dev_dir = os.path.join(here, "addon_packages_dev")
-if os.path.exists(dev_dir) and dev_dir not in sys.path:
-    sys.path.insert(0, dev_dir)
-
-# fix debugging
-import threading
-if not hasattr(threading, "__file__"):
-    # best-effort fallback: point at the stdlib threading.py location
-    threading.__file__ = os.path.join(os.path.dirname(os.__file__), "threading.py")
-
-import debugpy
-DEBUGGER_PORT = 5678
-debugpy.listen(("localhost", DEBUGGER_PORT))
-
 WAIT_FOR_DEBUGGER_ATTACHED = False
 if WAIT_FOR_DEBUGGER_ATTACHED:
+    # disable warning about debugging frozen modules
+    os.environ["PYDEVD_DISABLE_FILE_VALIDATION"] = "1"
+
+    # load package for debugging
+    here = os.path.dirname(__file__)
+    dev_dir = os.path.join(here, "addon_packages_dev")
+    if os.path.exists(dev_dir) and dev_dir not in sys.path:
+        sys.path.insert(0, dev_dir)
+
+    # fix debugging
+    import threading
+    if not hasattr(threading, "__file__"):
+        # best-effort fallback: point at the stdlib threading.py location
+        threading.__file__ = os.path.join(os.path.dirname(os.__file__), "threading.py")
+
+    import debugpy
+    DEBUGGER_PORT = 5678
+    debugpy.listen(("localhost", DEBUGGER_PORT))
     debugpy.wait_for_client()
 
 # load regular addon packages
 here = os.path.dirname(__file__)
-addon_dir = os.path.join(here, "vendor")
-if os.path.exists(addon_dir) and addon_dir not in sys.path:
-    sys.path.insert(0, addon_dir)
+packages_dir = os.path.join(here, "vendor")
+if os.path.exists(packages_dir) and packages_dir not in sys.path:
+    sys.path.insert(0, packages_dir)
 
 # Regular entry
+import json
+import dataclasses
 from aqt import mw
 from aqt.utils import showInfo
 from aqt.qt import qconnect
@@ -52,16 +53,12 @@ from anki.decks import DeckManager, DeckDict
 from anki.cards import Card, CardId
 from anki.notes import Note
 from anki.collection import Collection
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import QDockWidget, QLabel, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QLayout, QFrame
 from PyQt6.QtCore import Qt
 import tkinter as tk
 from tkinter import filedialog
 from tkinter import messagebox
-import os.path
-import json
-import dataclasses
-import sys
 from types import SimpleNamespace
 from typing import Any
 from typing import Dict
@@ -77,7 +74,6 @@ from googleapiclient import discovery
 from googleapiclient.discovery import Resource
 
 if TYPE_CHECKING:
-    import anki
     from googleapiclient._apis.drive.v3.schemas import FileList
     from googleapiclient._apis.drive.v3.resources import DriveResource
     from googleapiclient._apis.drive.v3.schemas import File
@@ -94,32 +90,19 @@ else:
 type Credentials = google.auth.external_account_authorized_user.Credentials | google.oauth2.credentials.Credentials
 type RemoteDeck = Dict[str, str]
 
-APPLICATION_SCOPES = [
+APPLICATION_SCOPES: List[str] = [
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/drive.metadata",
     "https://www.googleapis.com/auth/drive.metadata.readonly",
-    "https://www.googleapis.com/auth/spreadsheets"]
+    "https://www.googleapis.com/auth/spreadsheets"
+]
 
-ADDON_NAME = "goosheesy"
-ADDON_CONFIG = f"{ADDON_NAME}.json"
-
-# Configure logging to write to a file
-LOGS_DIR = 'C:/temp/'
-LOG_FILENAME = 'anki_google_sheets.log'
-LOGS_FILE = 'C:/temp/anki_google_sheets.log'
-os.makedirs(os.path.dirname(LOGS_FILE), exist_ok=True)
-
-logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
-rootLogger = logging.getLogger()
-
-fileHandler = logging.FileHandler(f"{LOGS_DIR}/{LOG_FILENAME}")
-fileHandler.setFormatter(logFormatter)
-rootLogger.addHandler(fileHandler)
-
-consoleHandler = logging.StreamHandler(sys.stdout)
-consoleHandler.setFormatter(logFormatter)
-rootLogger.addHandler(consoleHandler)
+USER_DATA_DIR: str = "user_files"
+ADDON_NAME: str = "goosheesy"
+ADDON_CONFIG: str = ADDON_NAME + ".json"
+LOG_FILENAME: str = "goosheesy.log"
+VERSION_FILE: str = "version.txt"
 
 # ============================================================================================
 # TODO extract all Google Sheets logic to a separate Python file
@@ -162,20 +145,23 @@ def get_credentials(credentials_file: str) -> Credentials:
 
 
 def find_spreadsheets(drive_service: DriveResource, target_substring: str) -> List[str]:
+    """Find in the specified Google Drive account all Google Spreadsheets whose name contains the specified substring"""
+
     # https://developers.google.com/workspace/drive/api/guides/mime-types
-    mime_type: str = "application/vnd.google-apps.spreadsheet"
-    
+    GOOGLE_SPREADSHEET_MIME_TYPE: str = "application/vnd.google-apps.spreadsheet"
+
     ids: List[str] = []
     next_page_token: str = ""
 
+    logging.debug("Starting search for spreadsheets with name with substring: %s", target_substring)
     while True:
-        # Call the Drive v3 API
         files: DriveResource.FilesResource = drive_service.files()
-        request: FileListHttpRequest = files.list(pageToken=next_page_token,
-                                                  pageSize=10, fields="nextPageToken, files(id, name)",
-                                                  q=f"mimeType='{mime_type}' and 'me' in owners and trashed=false and name contains '{target_substring}'")
+        request: FileListHttpRequest = files.list(
+            pageToken=next_page_token,
+            pageSize=10, fields="nextPageToken, files(id, name)",
+            q=f"mimeType='{GOOGLE_SPREADSHEET_MIME_TYPE}' and 'me' in owners and trashed=false and name contains '{target_substring}'")
+        
         results: FileList = request.execute()
-
         next_page_token = results.get("nextPageToken")  # type: ignore
         items = results.get("files", [])
 
@@ -184,13 +170,11 @@ def find_spreadsheets(drive_service: DriveResource, target_substring: str) -> Li
         #     raise Exception(
         #         f"No spreadsheets found with name {target_substring}")
 
-        print("Next chunk of files:")
+        logging.debug("Next chunk of files:")
         for item in items:
             spreadsheest_name: str = item['name']  # type: ignore
             spreadsheet_id: str = item['id']  # type: ignore
-            print(
-                f"Spreadsheet name: {spreadsheest_name}, spreadsheet ID: {spreadsheet_id}")
-
+            logging.debug("Spreadsheet name: %s, spreadsheet ID: %s", spreadsheest_name, spreadsheet_id)
             ids.append(spreadsheet_id)
 
         if not next_page_token:
@@ -213,10 +197,6 @@ class AddonConfig:
     sync_config_file: str
 
 
-def get_title(sheet) -> str:
-    return sheet.get("properties", {}).get("title", "")
-
-
 def get_google_sheets_deck(drive_service: DriveResource, sheets_service: SheetsResource, spreadsheet_name: str, sheet_name:str) -> RemoteDeck:
     """Go to Google Sheets spreadsheet sheet and gather all cards from there."""
 
@@ -237,7 +217,7 @@ def get_google_sheets_deck(drive_service: DriveResource, sheets_service: SheetsR
 
     for row in values:
         if len(row) < 2:
-            logging.info("Skipping not full line.")
+            logging.debug("Skipping not full line.")
             continue
 
         CARD_KEY_COLUMN_INDEX = 0
@@ -253,9 +233,9 @@ def get_google_sheets_deck(drive_service: DriveResource, sheets_service: SheetsR
 
 def sync_deck(config: AddonConfig, spreadsheet_name: str, sheet_name: str, anki_deck_name: str):
     """Update local Anki deck with cards from remote deck: 
-          * Iterate over existing Anki cards by matching card keys:
+          * Iterate over existing Anki cards and find matching card in the remote deck:
              * If the card description differs, update it
-          * Remove Anki cards which keys are absent in the remote deck
+             * If the card is absent in the remote deck, delete it from Anki deck
           * Add new cards from the remote deck which are absent in the Anki deck
     """
 
@@ -316,13 +296,33 @@ def try_sync_deck(config: AddonConfig, spreadsheet_name: str, sheet_name: str, a
     except Exception as error:
         messagebox.showinfo("Error", f"Failed to sync sheet: '{spreadsheet_name}'-'{sheet_name}' with deck '{anki_deck_name}', {type(error).__name__} - {error}")
 
-def load_addon_config():
+
+def get_addon_dir() -> str:
+    addon_dir: str = os.path.dirname(__file__)
+    return addon_dir
+
+
+def get_user_data_dir() -> str:
+    user_data_dir: str = os.path.join(get_addon_dir(), USER_DATA_DIR)
+    return user_data_dir
+
+
+def get_addon_config_path() -> str:
+    addon_config: str = os.path.join(get_user_data_dir(), ADDON_CONFIG)
+    return addon_config
+
+
+def load_addon_config() -> AddonConfig:
     """Load add-on configuration from JSON file"""
-    logging.info("Loading local addon config.")
-    with open(ADDON_CONFIG, "r", encoding="utf8") as data:
-        config_json = json.load(data, object_hook=lambda d: SimpleNamespace(**d))
+    addon_config_file: str = get_addon_config_path()
+    logging.info("Loading local addon config from: %s", addon_config_file)
 
     config: AddonConfig = AddonConfig("", "")
+    if not os.path.exists(addon_config_file):
+        return config
+
+    with open(addon_config_file, "r", encoding="utf8") as data:
+        config_json = json.load(data, object_hook=lambda d: SimpleNamespace(**d))
 
     config.credentials_file =  getattr(config_json, "credentials_file", "")
     config.sync_config_file = getattr(config_json, "sync_config_file", "")
@@ -332,18 +332,27 @@ def load_addon_config():
 
 def save_addon_config(config: AddonConfig):
     """Save add-on configuration into JSON file"""
+
+    addon_config_file: str = get_addon_config_path()
+    logging.info("Saving add-on configuration to %s", addon_config_file)
+
     config_json: Any = {}
     config_json["credentials_file"] = config.credentials_file
     config_json["sync_config_file"] = config.sync_config_file
 
-    with open(ADDON_CONFIG, "w+", encoding="utf8") as json_file:
-        json.dump(config_json, json_file, indent=4)
-        logging.info("Saving add-on configuration to {}")
+    with open(addon_config_file, "w+", encoding="utf8") as json_file:
+        json.dump(config_json, json_file, indent=4)    
 
+
+def get_icon() -> QIcon:
+    icon_path = os.path.join(get_addon_dir(), "icon.png")
+    return QIcon(icon_path)
 
 def goosheesy_settings():
+    """Opens GUI window with add-on settings"""
     mw.settingsWidget = widget = QWidget()
-    widget.setWindowTitle("Google Sheets import settings")
+    widget.setWindowTitle("Settings for Google Sheets import")
+    widget.setWindowIcon(get_icon())
 
     config: AddonConfig = load_addon_config()
 
@@ -422,8 +431,8 @@ def goosheesy_settings():
     widget.show()
 
 
-def goosheesy_import_from_google_sheets() -> None:
-    """Executes full process of syncing local Anki deck cards with the remote Google Sheets table"""
+def goosheesy_import():
+    """Opens GUI window with configured decks for synchronization, executes process of syncing."""
 
     if mw is None:
         logging.error("mw is None.")
@@ -455,7 +464,8 @@ def goosheesy_import_from_google_sheets() -> None:
         logging.info("Id: %s %s", d.id, d.name)
 
     mw.importWidget = widget = QWidget()
-    widget.setWindowTitle("Google Sheets importing")
+    widget.setWindowTitle("Import from Google Sheets")
+    widget.setWindowIcon(get_icon())
     layout = QVBoxLayout(widget)
     layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
 
@@ -463,26 +473,26 @@ def goosheesy_import_from_google_sheets() -> None:
     with open(config.sync_config_file, "r", encoding="utf8") as data:
         import_config_json = json.load(data, object_hook=lambda d: SimpleNamespace(**d))
 
-    for spreadsheet_settings in import_config_json.spreadsheets:
+    for spreadsheet_settings in import_config_json.synchronization_map:
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
         line.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(line)
 
-        spreadsheet_label = QLabel(f"Spreadsheet: {spreadsheet_settings.name}")
+        spreadsheet_name = spreadsheet_settings.spreadsheet_name
+        spreadsheet_label = QLabel(f"Spreadsheet: {spreadsheet_name}")
         spreadsheet_label.setStyleSheet("font-weight: bold;")
         layout.addWidget(spreadsheet_label)
 
         for sheet_settings in spreadsheet_settings.sheets:
-            spreadsheet_name = spreadsheet_settings.name
-            sheet_name = sheet_settings.name
-            anki_deck_name = sheet_settings.deck
+            sheet_name = sheet_settings.sheet_name
+            anki_deck_name = sheet_settings.deck_name
 
             sheet_label = QLabel(f"Sheet: {sheet_name} -> Deck: {anki_deck_name}")
 
             anki_deck: DeckDict | None = decks.by_name(anki_deck_name)
-            if anki_deck is None:
-                sheet_label.setStyleSheet("color: red;") 
+            # if anki_deck is None:
+                # sheet_label.setStyleSheet("color: red;") 
 
             def on_sync_one_deck(
                 _checked: bool,
@@ -522,18 +532,37 @@ def goosheesy_import_from_google_sheets() -> None:
 
 def main():
     """Entry point for add-on initialization."""
-    logging.info("Loaded Anki add-on for Google Sheets importing.")
 
-    current_directory = os.getcwd()
-    logging.info("Current working directory: %s", current_directory)
+    log_file: str = os.path.join(get_user_data_dir(), LOG_FILENAME)
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
 
-    execute_import_action = QAction("Import from Google Sheets", mw)
-    qconnect(execute_import_action.triggered, goosheesy_import_from_google_sheets)
-    mw.form.menuTools.addAction(execute_import_action)
+    log_formatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
+    root_logger = logging.getLogger()
 
-    settings_action = QAction("Google Sheets import settings", mw)
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(log_formatter)
+    root_logger.addHandler(file_handler)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(log_formatter)
+    root_logger.addHandler(console_handler)
+
+    version_file: str = os.path.join(get_addon_dir(), VERSION_FILE)
+    with open(version_file, 'r', encoding="utf8") as file:
+        version = file.read()
+
+    logging.info("Loaded goosheesy - Anki add-on for Google Sheets importing. Version: %s", version)
+
+    working_directory = os.getcwd()
+    logging.info("Working directory: %s", working_directory)
+    
+    settings_action = QAction("Settings for Google Sheets import", mw)
     qconnect(settings_action.triggered, goosheesy_settings)
     mw.form.menuTools.addAction(settings_action)
+
+    execute_import_action = QAction("Import from Google Sheets", mw)
+    qconnect(execute_import_action.triggered, goosheesy_import)
+    mw.form.menuTools.addAction(execute_import_action)
 
 
 main()
