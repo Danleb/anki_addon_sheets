@@ -8,7 +8,8 @@ It's best suited and tested on importing the translation pairs in form "word-tra
 
 ## Installation
 
-TODO
+* To install package version from AnkiWeb, follow the instruction: https://ankiweb.net/shared/info/258119705 
+* To install manually, download the add-on package from GitHub releases page, and click in Anki `Tools`->`Add-ons`->`Install from file`.
 
 ## Usage Flow
 
@@ -82,7 +83,7 @@ python -m pip install -r requirements_dev.txt -t ./addon_packages_dev
 
 In `__init__.py`, set `WAIT_FOR_DEBUGGER_ATTACHED` variable to `True`.
 
-To debug, launch Anki first. It will freeze and won't launch until you presss F5 in VSCode and attach the debugger to your add-on.
+To debug, launch Anki first. It will freeze and won't launch until you hit F5 in VSCode and attach the debugger to the add-on.
 
 ## Deployment
 

@@ -491,8 +491,8 @@ def goosheesy_import():
             sheet_label = QLabel(f"Sheet: {sheet_name} -> Deck: {anki_deck_name}")
 
             anki_deck: DeckDict | None = decks.by_name(anki_deck_name)
-            # if anki_deck is None:
-                # sheet_label.setStyleSheet("color: red;") 
+            if anki_deck is None:
+                sheet_label.setStyleSheet("color: red;") 
 
             def on_sync_one_deck(
                 _checked: bool,
