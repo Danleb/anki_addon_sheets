@@ -14,7 +14,9 @@ import logging
 import sys
 import os.path
 import os
+import platform
 
+# handle debugging
 WAIT_FOR_DEBUGGER_ATTACHED = False
 if WAIT_FOR_DEBUGGER_ATTACHED:
     # disable warning about debugging frozen modules
@@ -37,41 +39,59 @@ if WAIT_FOR_DEBUGGER_ATTACHED:
     debugpy.listen(("localhost", DEBUGGER_PORT))
     debugpy.wait_for_client()
 
-# load regular addon packages
-here = os.path.dirname(__file__)
-packages_dir = os.path.join(here, "vendor")
-if os.path.exists(packages_dir) and packages_dir not in sys.path:
-    sys.path.insert(0, packages_dir)
+# handle loading of dependencies
+def get_addon_dir() -> str:
+    addon_dir: str = os.path.dirname(__file__)
+    return addon_dir
 
-# Regular entry
+
+def get_packages_dir() -> str:
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+
+    # Normalize common arch names
+    if machine not in ("x86_64", "amd64"):
+        raise Exception(f"Not supported CPU architecture: {machine}")
+
+    deps_dir = os.path.join(get_addon_dir(), "vendor")
+
+    if system == "windows":
+        return os.path.join(deps_dir, "win_amd64")
+    if system == "linux":
+        return os.path.join(deps_dir, "linux_amd64")
+
+    raise Exception("Not supported OS: %s", deps_dir)
+
+
+def loaded_addon_packages(packages_dir: str) -> None:
+    # load regular addon packages
+    if os.path.exists(packages_dir) and packages_dir not in sys.path:
+        sys.path.append(packages_dir)
+
+
+loaded_addon_packages(get_packages_dir())
+
+
+# regular entry
 import json
-import dataclasses
 from aqt import mw
 from aqt.utils import showInfo
 from aqt.qt import qconnect
+from aqt.addons import AddonManager
 from anki.decks import DeckManager, DeckDict
 from anki.cards import Card, CardId
 from anki.notes import Note
 from anki.collection import Collection
+from anki.hooks import wrap
 from PyQt6.QtGui import QAction, QIcon
-from PyQt6.QtWidgets import QDockWidget, QLabel, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QLayout, QFrame
+from PyQt6.QtWidgets import QDockWidget, QLabel, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QLayout, QFrame, QMessageBox, QFileDialog
 from PyQt6.QtCore import Qt
-import tkinter as tk
-from tkinter import filedialog
-from tkinter import messagebox
 from types import SimpleNamespace
 from typing import Any
 from typing import Dict
 from typing import List
 from typing import Optional
 from typing import TYPE_CHECKING
-import google.auth
-import google.oauth2.credentials
-import google.auth.external_account_authorized_user
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient import discovery
-from googleapiclient.discovery import Resource
 
 if TYPE_CHECKING:
     from googleapiclient._apis.drive.v3.schemas import FileList
@@ -84,10 +104,9 @@ if TYPE_CHECKING:
     from googleapiclient._apis.sheets.v4.resources import AddSheetRequest
     from googleapiclient._apis.sheets.v4.resources import AddSheetResponse
 else:
-    DriveResource = Resource
-    SheetsResource = Resource
+    DriveResource = Any
+    SheetsResource = Any
 
-type Credentials = google.auth.external_account_authorized_user.Credentials | google.oauth2.credentials.Credentials
 type RemoteDeck = Dict[str, str]
 
 APPLICATION_SCOPES: List[str] = [
@@ -104,6 +123,30 @@ ADDON_CONFIG: str = ADDON_NAME + ".json"
 LOG_FILENAME: str = "goosheesy.log"
 VERSION_FILE: str = "version.txt"
 
+
+def get_icon() -> QIcon:
+    icon_path = os.path.join(get_addon_dir(), "icon.png")
+    return QIcon(icon_path)
+
+
+def show_message_box(icon: QMessageBox.Icon, title: str, message: str) -> None:
+    message_box = QMessageBox()
+    message_box.setIcon(icon)
+    message_box.setText(message)
+    message_box.setWindowTitle(title)
+    message_box.setWindowIcon(get_icon())
+    message_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+    message_box.exec()
+
+
+def show_info(title: str, message: str) -> None:
+    return show_message_box(QMessageBox.Icon.Information, title, message)
+
+
+def show_error(title: str, message: str) -> None:
+    return show_message_box(QMessageBox.Icon.Critical, title, message)
+
+
 # ============================================================================================
 # TODO extract all Google Sheets logic to a separate Python file
 class NoCredentialsException(Exception):
@@ -113,8 +156,17 @@ class NoCredentialsException(Exception):
         super().__init__(msg, *args, **kwargs)
 
 
-def get_credentials(credentials_file: str) -> Credentials:
+def get_credentials(credentials_file: str):
     """Returns user authorization credentials (token) for Google API. Performs user authentication in browser if needed"""
+
+    # do lazy importing to mitigate the issue with .pyd files from cryptography module preventing the add-on from uninstalling
+    import google.auth
+    import google.oauth2.credentials
+    import google.auth.external_account_authorized_user
+    from google.auth.transport.requests import Request
+    from google_auth_oauthlib.flow import InstalledAppFlow
+
+    type Credentials = google.auth.external_account_authorized_user.Credentials | google.oauth2.credentials.Credentials
     creds: Optional[Credentials] = None
 
     # The file token.json stores the user's access and refresh tokens, and is
@@ -239,14 +291,18 @@ def sync_deck(config: AddonConfig, spreadsheet_name: str, sheet_name: str, anki_
           * Add new cards from the remote deck which are absent in the Anki deck
     """
 
-    credentials: Credentials = get_credentials(config.credentials_file)
+    # do lazy importing to mitigate the issue with .pyd files from cryptography module preventing the add-on from uninstalling
+    from googleapiclient import discovery
+    from googleapiclient.discovery import Resource
+
+    credentials = get_credentials(config.credentials_file)
     sheets_service: SheetsResource = discovery.build("sheets", "v4", credentials=credentials)
     drive_service: DriveResource = discovery.build("drive", "v3", credentials=credentials)
     remote_deck: RemoteDeck = get_google_sheets_deck(drive_service, sheets_service, spreadsheet_name, sheet_name)
 
     deck_id = mw.col.decks.id_for_name(anki_deck_name)
     if deck_id is None:
-        messagebox.showinfo("Error", f"Failed to find Anki deck: {anki_deck_name}")
+        show_error("Error", f"Failed to find Anki deck: {anki_deck_name}")
         return
     
     card_ids = mw.col.decks.cids(deck_id)
@@ -287,19 +343,14 @@ def sync_deck(config: AddonConfig, spreadsheet_name: str, sheet_name: str, anki_
             logging.info("Added new card: %s", card_key)
 
     logging.info("Finished syncing deck: %s", anki_deck_name)
-    messagebox.showinfo(f"Success - {anki_deck_name}", f"Synced dech {anki_deck_name}, new cards added: {added_card_count}, updated cards: {updated_card_count}, deleted cards: {removed_card_count}")
+    show_info(f"Success - {anki_deck_name}", f"Synced dech {anki_deck_name}, new cards added: {added_card_count}, updated cards: {updated_card_count}, deleted cards: {removed_card_count}")
 
 
 def try_sync_deck(config: AddonConfig, spreadsheet_name: str, sheet_name: str, anki_deck_name: str):
     try:
         sync_deck(config, spreadsheet_name, sheet_name, anki_deck_name)
     except Exception as error:
-        messagebox.showinfo("Error", f"Failed to sync sheet: '{spreadsheet_name}'-'{sheet_name}' with deck '{anki_deck_name}', {type(error).__name__} - {error}")
-
-
-def get_addon_dir() -> str:
-    addon_dir: str = os.path.dirname(__file__)
-    return addon_dir
+        show_error("Error", f"Failed to sync sheet: '{spreadsheet_name}'-'{sheet_name}' with deck '{anki_deck_name}', {type(error).__name__} - {error}")
 
 
 def get_user_data_dir() -> str:
@@ -324,10 +375,22 @@ def load_addon_config() -> AddonConfig:
     with open(addon_config_file, "r", encoding="utf8") as data:
         config_json = json.load(data, object_hook=lambda d: SimpleNamespace(**d))
 
-    config.credentials_file =  getattr(config_json, "credentials_file", "")
+    config.credentials_file = getattr(config_json, "credentials_file", "")
     config.sync_config_file = getattr(config_json, "sync_config_file", "")
 
     return config
+
+
+def select_file() -> str | None:
+    dialog = QFileDialog()
+    dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)
+    dialog.setNameFilter("JSON configuration (*.json)")
+    dialog.setViewMode(QFileDialog.ViewMode.List)
+    if dialog.exec():
+        filenames = dialog.selectedFiles()
+        if len(filenames) > 0:
+            return filenames[0]
+    return None
 
 
 def save_addon_config(config: AddonConfig):
@@ -343,10 +406,6 @@ def save_addon_config(config: AddonConfig):
     with open(addon_config_file, "w+", encoding="utf8") as json_file:
         json.dump(config_json, json_file, indent=4)    
 
-
-def get_icon() -> QIcon:
-    icon_path = os.path.join(get_addon_dir(), "icon.png")
-    return QIcon(icon_path)
 
 def goosheesy_settings():
     """Opens GUI window with add-on settings"""
@@ -367,11 +426,13 @@ def goosheesy_settings():
     credentials_textbox.setMinimumWidth(700)
 
     def on_select_credentials_file():
-        credentials_file = filedialog.askopenfilename()
-        if os.path.exists(credentials_file):
+        credentials_file: str | None = select_file()
+        if credentials_file is None:
+            pass
+        elif os.path.exists(credentials_file):
             credentials_textbox.setText(credentials_file)
         elif not len(credentials_file) == 0:
-            messagebox.showinfo("Error", "Failed to select credentials file!")
+            show_error("Error", "Failed to select credentials file!")
 
     credentials_textbox.setText(config.credentials_file)
     select_button = QPushButton("Select")
@@ -390,11 +451,13 @@ def goosheesy_settings():
     sync_config_textbox.setMinimumWidth(700)
 
     def on_select_sync_config_file():
-        sync_config_file = filedialog.askopenfilename()
-        if os.path.exists(sync_config_file):
+        sync_config_file: str | None = select_file()
+        if sync_config_file is None:
+            pass
+        elif os.path.exists(sync_config_file):
             sync_config_textbox.setText(sync_config_file)
-        else:
-            messagebox.showinfo("Error", "Failed to select synchronization configuration file!")
+        elif not len(sync_config_file) == 0:
+            show_error("Error", "Failed to select synchronization configuration file!")
 
     sync_config_textbox.setText(config.sync_config_file)
     select_sync_config_button = QPushButton("Select")
@@ -449,6 +512,10 @@ def goosheesy_import():
         return
 
     config: AddonConfig = load_addon_config()
+
+    if not os.path.exists(config.credentials_file) or not os.path.exists(config.sync_config_file):
+        show_error("Error - Configuration files missing or not exist", "Configure sheets and decks first in the 'Settings for Google Sheets import' menu!")
+        return
 
     # current_directory = os.getcwd()
     # backup_dir = os.path.join(current_directory, "backups")
@@ -530,7 +597,14 @@ def goosheesy_import():
     widget.show()
 
 
-def main():
+def on_addon_delete(_manager: AddonManager, addon_name: str, *args: Any, **kwargs: Any) -> None:
+    if addon_name == ADDON_NAME:
+        for h in list(logging.getLogger().handlers):
+            h.close()
+            logging.getLogger().removeHandler(h)
+
+
+def main() -> None:
     """Entry point for add-on initialization."""
 
     log_file: str = os.path.join(get_user_data_dir(), LOG_FILENAME)
@@ -547,6 +621,8 @@ def main():
     console_handler.setFormatter(log_formatter)
     root_logger.addHandler(console_handler)
 
+    AddonManager.deleteAddon = wrap(AddonManager.deleteAddon, on_addon_delete, "before") # type: ignore[method-assign]
+
     version_file: str = os.path.join(get_addon_dir(), VERSION_FILE)
     with open(version_file, 'r', encoding="utf8") as file:
         version = file.read()
@@ -555,7 +631,7 @@ def main():
 
     working_directory = os.getcwd()
     logging.info("Working directory: %s", working_directory)
-    
+
     settings_action = QAction("Settings for Google Sheets import", mw)
     qconnect(settings_action.triggered, goosheesy_settings)
     mw.form.menuTools.addAction(settings_action)

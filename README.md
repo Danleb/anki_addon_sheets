@@ -2,14 +2,16 @@
 
 Google Sheets Syncer - goosheesy
 
-Anki addon for importing cards from spreadsheet tables on Google Sheets.
+Anki add-on for importing cards from spreadsheet tables on Google Sheets.
+
+Add-on page on AnkiWeb: https://ankiweb.net/shared/info/258119705
 
 It's best suited and tested on importing the translation pairs in form "word-translation".
 
 ## Installation
 
-* To install package version from AnkiWeb, follow the instruction: https://ankiweb.net/shared/info/258119705 
-* To install manually, download the add-on package from GitHub releases page, and click in Anki `Tools`->`Add-ons`->`Install from file`.
+* To install the add-on version published on AnkiWeb: launch Anki, select `Tools`->`Add-ons`->`Get Add-ons...` and enter the add-on ID `258119705`.
+* To install manually from the `.ankiaddon` package, download the package from GitHub releases page, and select in Anki `Tools`->`Add-ons`->`Install from file`.
 
 ## Usage Flow
 
@@ -72,8 +74,21 @@ To prepare the project for development:
         ```
 * Install regular packages:
 ```shell
-pip install -r requirements.txt -t ./vendor
+python -m pip install -r requirements.txt -t ./vendor/win_amd64 --only-binary=:all:
 ```
+
+* Install packages for Linux:
+```shell
+python -m pip install `
+  --platform manylinux_2_28_x86_64 `
+  --python-version 3.13 `
+  --implementation cp `
+  --abi cp313 `
+  --only-binary=:all: `
+  --target ./vendor/linux_amd64 `
+  -r requirements.txt
+```
+
 * Install development packages:
 ```shell
 python -m pip install -r requirements_dev.txt -t ./addon_packages_dev
@@ -89,7 +104,7 @@ To debug, launch Anki first. It will freeze and won't launch until you hit F5 in
 
 * Ensure dependency modules are installed.
 * Increase version number.
-* Create addon package archive by running the `package_addon` script.
+* Create add-on package archive by running the `package_addon` script.
 * Upload to https://ankiweb.net/shared/addons.
 * Upload to releases page on GitHub.
 

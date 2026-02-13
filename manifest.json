@@ -1,14 +1,4 @@
 {
-  "display_name": "Goosheesy",
-  "module_name": "Goosheesy",
-  "repo_name": "goosheesy",
-  "ankiweb_id": "258119705",
-  "author": "danleb",
-  "conflicts": [],
-  "targets": [
-    "anki21"
-  ],
-  "min_point_version": "2.1.66",
-  "max_tested_anki_version": "25.09.2",
-  "ankiweb_conflicts_with_local": false
+   "name":"Goosheesy",
+   "package":"goosheesy"
 }
