@@ -72,12 +72,12 @@ To prepare the project for development:
         ```bash
         TODO
         ```
-* Install regular packages:
+* Install third-party dependencies (for runtime):
 ```shell
 python -m pip install -r requirements.txt -t ./vendor/win_amd64 --only-binary=:all:
 ```
 
-* Install packages for Linux:
+* Install third-party dependencies (for runtime) for Linux:
 ```shell
 python -m pip install `
   --platform manylinux_2_28_x86_64 `
@@ -89,7 +89,7 @@ python -m pip install `
   -r requirements.txt
 ```
 
-* Install development packages:
+* Install third-party dependencies for development:
 ```shell
 python -m pip install -r requirements_dev.txt -t ./addon_packages_dev
 ```
@@ -102,8 +102,9 @@ To debug, launch Anki first. It will freeze and won't launch until you hit F5 in
 
 ## Deployment
 
-* Ensure dependency modules are installed.
-* Increase version number.
+* Ensure the third-party dependency modules are installed to the 'vendor' directory.
+* Increase version number in `version.txt` file.
+* Update CHANGELOG.md file.
 * Create add-on package archive by running the `package_addon` script.
 * Upload to https://ankiweb.net/shared/addons.
 * Upload to releases page on GitHub.

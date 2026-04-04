@@ -45,6 +45,16 @@ def get_addon_dir() -> str:
     return addon_dir
 
 
+def get_user_data_dir() -> str:
+    user_data_dir: str = os.path.join(get_addon_dir(), USER_DATA_DIR)
+    return user_data_dir
+
+
+def get_user_file(filename: str) -> str:
+    user_file: str = os.path.join(get_user_data_dir(), filename)
+    return user_file
+
+
 def get_packages_dir() -> str:
     system = platform.system().lower()
     machine = platform.machine().lower()
@@ -84,7 +94,7 @@ from anki.notes import Note
 from anki.collection import Collection
 from anki.hooks import wrap
 from PyQt6.QtGui import QAction, QIcon
-from PyQt6.QtWidgets import QDockWidget, QLabel, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QLayout, QFrame, QMessageBox, QFileDialog
+from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QLayout, QFrame, QMessageBox, QFileDialog
 from PyQt6.QtCore import Qt
 from types import SimpleNamespace
 from typing import Any
@@ -122,7 +132,8 @@ ADDON_NAME: str = "goosheesy"
 ADDON_CONFIG: str = ADDON_NAME + ".json"
 LOG_FILENAME: str = "goosheesy.log"
 VERSION_FILE: str = "version.txt"
-
+GOOGLE_API_CREDENTIALS_FILE = "credentials.json"
+GOOGLE_API_TOKEN_FILE = "token.json"
 
 def get_icon() -> QIcon:
     icon_path = os.path.join(get_addon_dir(), "icon.png")
@@ -169,11 +180,18 @@ def get_credentials(credentials_file: str):
     type Credentials = google.auth.external_account_authorized_user.Credentials | google.oauth2.credentials.Credentials
     creds: Optional[Credentials] = None
 
+    # TODO rewrite with OS keyring API access, both for credentials.json and token.json
+
+    # credentials_path: str = get_user_file(GOOGLE_API_CREDENTIALS_FILE)
+
     # The file token.json stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
     # time.
-    if os.path.exists("token.json"):
-        creds = google.oauth2.credentials.Credentials.from_authorized_user_file("token.json", APPLICATION_SCOPES)
+    token_path = get_user_file(GOOGLE_API_TOKEN_FILE)
+    logging.debug("Token path: %s", token_path)
+
+    if os.path.exists(token_path):
+        creds = google.oauth2.credentials.Credentials.from_authorized_user_file(token_path, APPLICATION_SCOPES)
 
     # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
@@ -187,7 +205,7 @@ def get_credentials(credentials_file: str):
             raise NoCredentialsException()
 
         # Save the credentials for the next run
-        with open("token.json", "w", encoding="utf8") as token:
+        with open(token_path, "w", encoding="utf8") as token:
             token.write(creds.to_json())
 
     if not creds:
@@ -323,7 +341,7 @@ def sync_deck(config: AddonConfig, spreadsheet_name: str, sheet_name: str, anki_
         else:
             anki_card_value = card.note()['Back']
             if not remote_card_value == anki_card_value:
-                logging.info("Updating description for the card: %s", card_key)
+                logging.info("Updating description for the card: %s, before: %s, after: %s", card_key, anki_card_value, remote_card_value)
                 card_note['Back'] = remote_card_value
                 mw.col.update_note(card_note)
                 updated_card_count = updated_card_count + 1
@@ -348,18 +366,16 @@ def sync_deck(config: AddonConfig, spreadsheet_name: str, sheet_name: str, anki_
 
 def try_sync_deck(config: AddonConfig, spreadsheet_name: str, sheet_name: str, anki_deck_name: str):
     try:
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         sync_deck(config, spreadsheet_name, sheet_name, anki_deck_name)
     except Exception as error:
+        QApplication.restoreOverrideCursor()
         show_error("Error", f"Failed to sync sheet: '{spreadsheet_name}'-'{sheet_name}' with deck '{anki_deck_name}', {type(error).__name__} - {error}")
-
-
-def get_user_data_dir() -> str:
-    user_data_dir: str = os.path.join(get_addon_dir(), USER_DATA_DIR)
-    return user_data_dir
+    QApplication.restoreOverrideCursor()
 
 
 def get_addon_config_path() -> str:
-    addon_config: str = os.path.join(get_user_data_dir(), ADDON_CONFIG)
+    addon_config: str = get_user_file(ADDON_CONFIG)
     return addon_config
 
 
@@ -584,9 +600,9 @@ def goosheesy_import():
     layout.addWidget(line)
 
     def on_sync_all():
-        for spreadsheet_settings in import_config_json.spreadsheets:
+        for spreadsheet_settings in import_config_json.synchronization_map:
             for sheet_settings in spreadsheet_settings.sheets:
-                try_sync_deck(config, spreadsheet_settings.name, sheet_settings.name, sheet_settings.deck)
+                try_sync_deck(config, spreadsheet_settings.spreadsheet_name, sheet_settings.sheet_name, sheet_settings.deck_name)
 
     sync_all_button = QPushButton("Sync all")
     qconnect(sync_all_button.clicked, on_sync_all)
@@ -607,13 +623,13 @@ def on_addon_delete(_manager: AddonManager, addon_name: str, *args: Any, **kwarg
 def main() -> None:
     """Entry point for add-on initialization."""
 
-    log_file: str = os.path.join(get_user_data_dir(), LOG_FILENAME)
+    log_file: str = get_user_file(LOG_FILENAME)
     os.makedirs(os.path.dirname(log_file), exist_ok=True)
 
-    log_formatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
+    log_formatter = logging.Formatter(u"%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
     root_logger = logging.getLogger()
 
-    file_handler = logging.FileHandler(log_file)
+    file_handler = logging.FileHandler(log_file, encoding="utf8")
     file_handler.setFormatter(log_formatter)
     root_logger.addHandler(file_handler)
 
@@ -624,7 +640,7 @@ def main() -> None:
     AddonManager.deleteAddon = wrap(AddonManager.deleteAddon, on_addon_delete, "before") # type: ignore[method-assign]
 
     version_file: str = os.path.join(get_addon_dir(), VERSION_FILE)
-    with open(version_file, 'r', encoding="utf8") as file:
+    with open(version_file, 'r', encoding='utf8') as file:
         version = file.read()
 
     logging.info("Loaded goosheesy - Anki add-on for Google Sheets importing. Version: %s", version)
