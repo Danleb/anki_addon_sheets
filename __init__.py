@@ -155,6 +155,7 @@ def show_info(title: str, message: str) -> None:
 
 
 def show_error(title: str, message: str) -> None:
+    logging.error("%s - %s", title, message)
     return show_message_box(QMessageBox.Icon.Critical, title, message)
 
 
@@ -284,6 +285,7 @@ def get_google_sheets_deck(drive_service: DriveResource, sheets_service: SheetsR
     values = result.get("values", [])
 
     deck: RemoteDeck = {}
+    rowNumber: int = 1
 
     for row in values:
         if len(row) < 2:
@@ -295,7 +297,17 @@ def get_google_sheets_deck(drive_service: DriveResource, sheets_service: SheetsR
 
         card_key: str = row[CARD_KEY_COLUMN_INDEX]
         card_value: str = row[CARD_VALUE_COLUMN_INDEX]
+
+        if not card_key:
+            logging.debug("Skipping line with empty key, line number: %s", rowNumber)
+            continue
+
+        if not card_value:
+            logging.debug("Skipping line with empty value, line number: %s", rowNumber)
+            continue
+
         deck[card_key] = card_value
+        rowNumber = rowNumber + 1
 
     return deck
 
@@ -628,6 +640,7 @@ def main() -> None:
 
     log_formatter = logging.Formatter(u"%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
     root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
 
     file_handler = logging.FileHandler(log_file, encoding="utf8")
     file_handler.setFormatter(log_formatter)
