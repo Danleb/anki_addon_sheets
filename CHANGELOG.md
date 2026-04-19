@@ -15,6 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [0.1.3] - 2026-04-19
+
+### Added
+
+* Set wait cursor when syncing decks;
+
+### Fixed
+
+* Fix: Add skipping of lines with empty key or value;
+* Fix UTF-8 logging;
+* Fix variable names typos;
+
+### Changed
+
+* Align user files paths;
+* Chore: Add logging of errors shown in message box;
+
 ## [0.1.2] - 2026-02-14
 
 ### Fixed
