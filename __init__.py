@@ -10,11 +10,14 @@ In spreadsheet, each sheet (table) corresponds to one Anki deck with the same na
 
 """
 
+import base64
 import logging
 import sys
 import os.path
 import os
 import platform
+from collections.abc import Mapping
+from typing import Any
 
 # handle debugging
 WAIT_FOR_DEBUGGER_ATTACHED = False
@@ -38,6 +41,23 @@ if WAIT_FOR_DEBUGGER_ATTACHED:
     DEBUGGER_PORT = 5678
     debugpy.listen(("localhost", DEBUGGER_PORT))
     debugpy.wait_for_client()
+
+
+def get_app_google_id() -> Mapping[str, Any]:
+    """Returns app Google Id for user authorization window"""
+    APP_GOOGLE_ID: str = """
+        eyJpbnN0YWxsZWQiOnsiY2xpZW50X2lkIjoiNDQ3NTMzMzY1MzI4LTVtb2VoaGkxdHFxaGZkcDY0bnFyb2xwaGxwNzN2ajh
+        pLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwicHJvamVjdF9pZCI6InRyYW5zbGF0aW9uc2ltcG9ydGVyLTQ1MTExOC
+        IsImF1dGhfdXJpIjoiaHR0cHM6Ly9hY2NvdW50cy5nb29nbGUuY29tL28vb2F1dGgyL2F1dGgiLCJ0b2tlbl91cmkiOiJod
+        HRwczovL29hdXRoMi5nb29nbGVhcGlzLmNvbS90b2tlbiIsImF1dGhfcHJvdmlkZXJfeDUwOV9jZXJ0X3VybCI6Imh0dHBz
+        Oi8vd3d3Lmdvb2dsZWFwaXMuY29tL29hdXRoMi92MS9jZXJ0cyIsImNsaWVudF9zZWNyZXQiOiJHT0NTUFgteWFFRnZOQXl
+        EbHBXYS15d3VaeWdWUzBKQWtYNCIsInJlZGlyZWN0X3VyaXMiOlsiaHR0cDovL2xvY2FsaG9zdCJdfX0=
+        """
+    decoded_bytes: bytes = base64.b64decode(APP_GOOGLE_ID)
+    decoded_string: str = decoded_bytes.decode("utf-8")
+    obj = json.loads(decoded_string)
+    return obj
+
 
 # handle loading of dependencies
 def get_addon_dir() -> str:
@@ -132,7 +152,6 @@ ADDON_NAME: str = "goosheesy"
 ADDON_CONFIG: str = ADDON_NAME + ".json"
 LOG_FILENAME: str = "goosheesy.log"
 VERSION_FILE: str = "version.txt"
-GOOGLE_API_CREDENTIALS_FILE = "credentials.json"
 GOOGLE_API_TOKEN_FILE = "token.json"
 
 def get_icon() -> QIcon:
@@ -168,7 +187,7 @@ class NoCredentialsException(Exception):
         super().__init__(msg, *args, **kwargs)
 
 
-def get_credentials(credentials_file: str):
+def get_credentials():
     """Returns user authorization credentials (token) for Google API. Performs user authentication in browser if needed"""
 
     # do lazy importing to mitigate the issue with .pyd files from cryptography module preventing the add-on from uninstalling
@@ -181,9 +200,7 @@ def get_credentials(credentials_file: str):
     type Credentials = google.auth.external_account_authorized_user.Credentials | google.oauth2.credentials.Credentials
     creds: Optional[Credentials] = None
 
-    # TODO rewrite with OS keyring API access, both for credentials.json and token.json
-
-    # credentials_path: str = get_user_file(GOOGLE_API_CREDENTIALS_FILE)
+    # TODO rewrite with OS keyring API access for token.json
 
     # The file token.json stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
@@ -199,7 +216,7 @@ def get_credentials(credentials_file: str):
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(credentials_file, APPLICATION_SCOPES)
+            flow = InstalledAppFlow.from_client_config(get_app_google_id(), APPLICATION_SCOPES)
             creds = flow.run_local_server(port=0)
 
         if not creds:
@@ -260,11 +277,9 @@ def find_spreadsheets(drive_service: DriveResource, target_substring: str) -> Li
 
 
 class AddonConfig:
-    def __init__(self, credentials_file: str, sync_config_file: str):
-        self.credentials_file = credentials_file
+    def __init__(self, sync_config_file: str):
         self.sync_config_file = sync_config_file
 
-    credentials_file: str
     sync_config_file: str
 
 
@@ -325,7 +340,7 @@ def sync_deck(config: AddonConfig, spreadsheet_name: str, sheet_name: str, anki_
     from googleapiclient import discovery
     from googleapiclient.discovery import Resource
 
-    credentials = get_credentials(config.credentials_file)
+    credentials = get_credentials()
     sheets_service: SheetsResource = discovery.build("sheets", "v4", credentials=credentials)
     drive_service: DriveResource = discovery.build("drive", "v3", credentials=credentials)
     remote_deck: RemoteDeck = get_google_sheets_deck(drive_service, sheets_service, spreadsheet_name, sheet_name)
@@ -396,14 +411,13 @@ def load_addon_config() -> AddonConfig:
     addon_config_file: str = get_addon_config_path()
     logging.info("Loading local addon config from: %s", addon_config_file)
 
-    config: AddonConfig = AddonConfig("", "")
+    config: AddonConfig = AddonConfig("")
     if not os.path.exists(addon_config_file):
         return config
 
     with open(addon_config_file, "r", encoding="utf8") as data:
         config_json = json.load(data, object_hook=lambda d: SimpleNamespace(**d))
 
-    config.credentials_file = getattr(config_json, "credentials_file", "")
     config.sync_config_file = getattr(config_json, "sync_config_file", "")
 
     return config
@@ -428,7 +442,6 @@ def save_addon_config(config: AddonConfig):
     logging.info("Saving add-on configuration to %s", addon_config_file)
 
     config_json: Any = {}
-    config_json["credentials_file"] = config.credentials_file
     config_json["sync_config_file"] = config.sync_config_file
 
     with open(addon_config_file, "w+", encoding="utf8") as json_file:
@@ -445,31 +458,6 @@ def goosheesy_settings():
 
     layout = QVBoxLayout(widget)
     layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
-
-    # credentials file
-    credentials_label = QLabel("Credentials file:")
-    layout.addWidget(credentials_label)
-
-    credentials_textbox = QLineEdit()
-    credentials_textbox.setMinimumWidth(700)
-
-    def on_select_credentials_file():
-        credentials_file: str | None = select_file()
-        if credentials_file is None:
-            pass
-        elif os.path.exists(credentials_file):
-            credentials_textbox.setText(credentials_file)
-        elif not len(credentials_file) == 0:
-            show_error("Error", "Failed to select credentials file!")
-
-    credentials_textbox.setText(config.credentials_file)
-    select_button = QPushButton("Select")
-    qconnect(select_button.clicked, on_select_credentials_file)
-
-    credentials_row = QHBoxLayout()
-    credentials_row.addWidget(credentials_textbox)
-    credentials_row.addWidget(select_button)
-    layout.addLayout(credentials_row)
 
     # synchronization configuration file
     sync_config_label = QLabel("Synchronization configuration file:")
@@ -498,7 +486,6 @@ def goosheesy_settings():
 
     # apply and close buttons
     def on_apply():
-        config.credentials_file = credentials_textbox.text()
         config.sync_config_file = sync_config_textbox.text()
         save_addon_config(config)
         widget.close()
@@ -541,7 +528,7 @@ def goosheesy_import():
 
     config: AddonConfig = load_addon_config()
 
-    if not os.path.exists(config.credentials_file) or not os.path.exists(config.sync_config_file):
+    if not os.path.exists(config.sync_config_file):
         show_error("Error - Configuration files missing or not exist", "Configure sheets and decks first in the 'Settings for Google Sheets import' menu!")
         return
 
@@ -626,6 +613,7 @@ def goosheesy_import():
 
 
 def on_addon_delete(_manager: AddonManager, addon_name: str, *args: Any, **kwargs: Any) -> None:
+    """Callback function to be called when user deletes the add-on"""
     if addon_name == ADDON_NAME:
         for h in list(logging.getLogger().handlers):
             h.close()
