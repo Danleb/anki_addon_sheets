@@ -102,8 +102,9 @@ def loaded_addon_packages(packages_dir: str) -> None:
 loaded_addon_packages(get_packages_dir())
 
 
-# regular entry
+# imports for packages from Anki and `vendor` directory
 import json
+import keyring
 from aqt import mw
 from aqt.utils import showInfo
 from aqt.qt import qconnect
@@ -152,7 +153,7 @@ ADDON_NAME: str = "goosheesy"
 ADDON_CONFIG: str = ADDON_NAME + ".json"
 LOG_FILENAME: str = "goosheesy.log"
 VERSION_FILE: str = "version.txt"
-GOOGLE_API_TOKEN_FILE = "token.json"
+USER_CREDS_KEY: str = "creds"
 
 def get_icon() -> QIcon:
     icon_path = os.path.join(get_addon_dir(), "icon.png")
@@ -187,6 +188,19 @@ class NoCredentialsException(Exception):
         super().__init__(msg, *args, **kwargs)
 
 
+def get_data(key: str) -> Mapping[str, Any] | None:
+    value: str | None = keyring.get_password(ADDON_NAME, key)
+    if value is None:
+        return None
+
+    obj = json.loads(value)
+    return obj
+
+
+def save_data(key: str, value: str) -> None:
+    keyring.set_password(ADDON_NAME, key, value)
+
+
 def get_credentials():
     """Returns user authorization credentials (token) for Google API. Performs user authentication in browser if needed"""
 
@@ -200,16 +214,10 @@ def get_credentials():
     type Credentials = google.auth.external_account_authorized_user.Credentials | google.oauth2.credentials.Credentials
     creds: Optional[Credentials] = None
 
-    # TODO rewrite with OS keyring API access for token.json
 
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    token_path = get_user_file(GOOGLE_API_TOKEN_FILE)
-    logging.debug("Token path: %s", token_path)
-
-    if os.path.exists(token_path):
-        creds = google.oauth2.credentials.Credentials.from_authorized_user_file(token_path, APPLICATION_SCOPES)
+    token = get_data(USER_CREDS_KEY)
+    if token:
+        creds = google.oauth2.credentials.Credentials.from_authorized_user_info(token, APPLICATION_SCOPES)
 
     # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
@@ -222,9 +230,8 @@ def get_credentials():
         if not creds:
             raise NoCredentialsException()
 
-        # Save the credentials for the next run
-        with open(token_path, "w", encoding="utf8") as token:
-            token.write(creds.to_json())
+        value: str = creds.to_json()
+        save_data(USER_CREDS_KEY, value)
 
     if not creds:
         raise NoCredentialsException()

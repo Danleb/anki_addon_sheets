@@ -15,12 +15,7 @@ It's best suited and tested on importing the translation pairs in form "word-tra
 
 ## Usage Flow
 
-Before using the add-on, you have to configure the `credentials.json` file so that the add-on can access sheets in your Google Sheets account, and `import_config.json` file which defines mapping between Google Sheets and Anki decks.
-
-The most complex step is to create the `credentials.json` file which will allow the add-on to access the data on Google Sheets.
-This file is created in [console.cloud.google.com](console.cloud.google.com).
-
-Create `import_config.json` file which maps your Google Sheets to Anki decks, for example:
+Create `decks_import_config.json` file which maps your Google Sheets to Anki decks, for example:
 
 ```json
 {
@@ -42,13 +37,21 @@ Create `import_config.json` file which maps your Google Sheets to Anki decks, fo
 }
 ```
 
+On Google Sheets create a spreadsheet called "My Japanese Vocabulary spreadsheet", create there a sheet called "Japanese Google Sheet" and put words for "Front" flashcard side to column "A", and put translations for "Back" flashcard side to column "B". Create 
+
 Each sheet in the spreadsheet is one-way synchronized into the Anki deck.
+
+Cards are updated based on the following logic:
+* Card is present in Google Sheets but absent in Anki deck -> a card is created in Anki deck.
+* Card is present in Anki deck but absent in Google Sheets -> the card is deleted from Anki deck.
+* Card is present both in Anki and Google Sheets -> card value is updated if necessary.
+
 
 Use add-on in Anki:
 
 * Launch Anki.
 * Press `Tools`->`Settings for Google Sheets import`.
-   * Select the `credentials.json` file.
+   * Select the `decks_import_config.json` file.
    * After the setup, the settings will look like following:
 
       ![Alt text](./docs/settings_window.png)
@@ -72,7 +75,7 @@ To prepare the project for development:
         ```bash
         TODO
         ```
-* Install third-party dependencies (for runtime):
+* Install third-party dependencies (for runtime) for Windows:
 ```shell
 python -m pip install -r requirements.txt -t ./vendor/win_amd64 --only-binary=:all:
 ```
@@ -92,6 +95,11 @@ python -m pip install `
 * Install third-party dependencies for development:
 ```shell
 python -m pip install -r requirements_dev.txt -t ./addon_packages_dev
+```
+
+* Print package version to add new dependency to requirements.txt:
+```shell
+pip show PACKAGE_NAME
 ```
 
 ### Debugging

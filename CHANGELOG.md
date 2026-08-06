@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [0.1.4] - 2026-08-06
+
+### Changed
+
+* User token data is now stored in keyring instead of token.json.
+
+### Removed
+
+* It's no longer necessary to configure credentials.json in settings.
+
 ## [0.1.3] - 2026-04-19
 
 ### Added
