@@ -312,6 +312,30 @@ def get_google_sheets_deck(drive_service: DriveResource, sheets_service: SheetsR
     return deck
 
 # ============================================================================================
+def is_card_values_equal(anki_card_value: str, remote_card_value: str) -> bool:
+    """Compares values of the card from remote deck and Anki deck with taking into account the [sound: ] tag"""
+    if remote_card_value == anki_card_value:
+        return True
+
+    anki_card_value = re.sub(r'\[sound:.*\]', '', anki_card_value)
+    anki_card_value = anki_card_value.strip()
+    if remote_card_value == anki_card_value:
+        return True
+
+    return False
+
+
+def update_card_value(anki_card_value: str, remote_card_value: str) -> str:
+    """Updates value of the card from Anki deck while keeping the [sound: ] tag"""
+
+    sound_tag_match = re.search(r'\[sound:.*\]', anki_card_value)
+    if sound_tag_match:
+        sound_tag = sound_tag_match.group(0)
+        updated_value = f"{remote_card_value} {sound_tag}"
+        return updated_value
+
+    return remote_card_value
+
 
 def sync_deck(config: AddonConfig, spreadsheet_name: str, sheet_name: str, anki_deck_name: str):
     """Update local Anki deck with cards from remote deck: 
@@ -352,9 +376,10 @@ def sync_deck(config: AddonConfig, spreadsheet_name: str, sheet_name: str, anki_
             removed_card_count = removed_card_count + 1
         else:
             anki_card_value = card.note()['Back']
-            if not remote_card_value == anki_card_value:
+            if not is_card_values_equal(anki_card_value, remote_card_value):
                 logging.info("Updating description for the card: %s, before: %s, after: %s", card_key, anki_card_value, remote_card_value)
-                card_note['Back'] = remote_card_value
+
+                card_note['Back'] = update_card_value(anki_card_value, remote_card_value)
                 mw.col.update_note(card_note)
                 updated_card_count = updated_card_count + 1
 
