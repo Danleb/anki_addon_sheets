@@ -3,3 +3,5 @@ google-api-python-client-stubs==1.39.0 # https://pypi.org/project/google-api-pyt
 google-auth-httplib2==0.4.1 # https://pypi.org/project/google-auth-httplib2/
 google-auth-oauthlib==1.4.0 # https://pypi.org/project/google-auth-oauthlib/
 keyring==25.7.0 # https://pypi.org/project/keyring/
+SecretStorage==3.5.0 # https://pypi.org/project/SecretStorage/
+jeepney==0.9.0 # https://pypi.org/project/jeepney/
